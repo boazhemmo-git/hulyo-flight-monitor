@@ -1,0 +1,28 @@
+{
+  "telegram": {
+    "bot_token": "",
+    "chat_id": ""
+  },
+  "watch_destinations": ["AMS", "NCE"],
+  "destination_names": {
+    "AMS": "Amsterdam (אמסטרדם)",
+    "NCE": "Nice (ניס)"
+  },
+  "monitor": {
+    "min_delay_seconds": 120,
+    "max_delay_seconds": 240,
+    "max_deals_per_alert": 8,
+    "max_price_usd": 0
+  },
+  "catalog": {
+    "base_url": "https://www.hulyo.co.il/dynamic/client/",
+    "product_url_template": "https://www.hulyo.co.il/product?id={product_id}&category=flights",
+    "flight_files": [
+      "flights-round-trip-v2.json",
+      "flights-one-way.json",
+      "flights-carousel.json",
+      "flights-packages.json",
+      "flights-one-way-bundle.json"
+    ]
+  }
+}
