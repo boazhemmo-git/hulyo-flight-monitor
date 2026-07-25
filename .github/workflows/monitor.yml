@@ -1,11 +1,12 @@
-# Cron re-registered 2026-07-25 after GitHub's scheduler failed to pick up
-# the trigger on this brand-new repo for its first ~3.5h (known GitHub-side
-# lag on new repos with sub-hourly schedules).
+# GitHub's own `schedule` trigger turned out unreliable for a 5-min interval
+# on this repo (after registering, it settled into firing every ~4h instead
+# of every 5min -- a known, unresolved GitHub Actions limitation on
+# sub-hourly schedules for low-traffic repos, not something fixable here).
+# An external scheduler (cron-job.org) now calls the workflow_dispatch API
+# on a real 5-minute clock instead.
 name: Hulyo flight monitor
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 concurrency:
