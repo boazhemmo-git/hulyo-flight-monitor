@@ -3,7 +3,7 @@
     "bot_token": "",
     "chat_id": ""
   },
-  "watch_destinations": ["AMS", "NCE"],
+  "watch_destinations": ["NCE", "AMS"],
   "destination_names": {
     "AMS": "Amsterdam (אמסטרדם)",
     "NCE": "Nice (ניס)"
