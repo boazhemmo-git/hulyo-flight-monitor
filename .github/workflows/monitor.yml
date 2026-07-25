@@ -1,3 +1,6 @@
+# Cron re-registered 2026-07-25 after GitHub's scheduler failed to pick up
+# the trigger on this brand-new repo for its first ~3.5h (known GitHub-side
+# lag on new repos with sub-hourly schedules).
 name: Hulyo flight monitor
 
 on:
