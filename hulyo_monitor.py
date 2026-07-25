@@ -297,6 +297,7 @@ def handle_list_command(
     updates = tg.get_updates(load_offset())
     if not updates:
         return
+    log.info("Polled %d Telegram update(s)", len(updates))
     save_offset(updates[-1]["update_id"] + 1)
 
     wants_list = False
@@ -306,10 +307,12 @@ def handle_list_command(
             continue
         text = (msg.get("text") or "").strip().lower().lstrip("/")
         if text in LIST_COMMANDS:
+            log.info("List command received (text=%r) - sending current offering", text)
             wants_list = True
 
     if wants_list:
         tg.send(format_offering(cfg, deals_by_dest))
+        log.info("Sent current offering in reply to list command")
 
 
 def write_status(counts: Optional[dict[str, int]], error: Optional[str]) -> None:
