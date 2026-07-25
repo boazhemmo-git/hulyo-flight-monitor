@@ -45,6 +45,10 @@ CONFIG_PATH = PROJECT_DIR / "config.json"
 SEEN_PATH = PROJECT_DIR / "seen_deals.json"
 LOG_PATH = PROJECT_DIR / "hulyo_monitor.log"
 STATUS_PATH = PROJECT_DIR / "status.json"
+OFFSET_PATH = PROJECT_DIR / "telegram_offset.json"
+
+# Text that triggers a reply with the current offering (not just new deals).
+LIST_COMMANDS = {"list", "status", "current"}
 
 log = logging.getLogger("hulyo")
 
@@ -90,7 +94,7 @@ class Deal:
 
 
 # --------------------------------------------------------------------------- #
-# Telegram (send-only — this monitor never needs to read replies)
+# Telegram (send + a light poll for the "list current offering" command)
 # --------------------------------------------------------------------------- #
 
 class Telegram:
@@ -116,6 +120,21 @@ class Telegram:
                 resp.raise_for_status()
             except requests.RequestException:
                 log.exception("Telegram send failed")
+
+    def get_updates(self, offset: Optional[int]) -> list[dict[str, Any]]:
+        """Non-blocking poll (timeout=0) — this bot is dedicated to Hulyo, so
+        there's no other consumer of its inbox to race with."""
+        url = f"https://api.telegram.org/bot{self._token}/getUpdates"
+        params: dict[str, Any] = {"timeout": 0}
+        if offset is not None:
+            params["offset"] = offset
+        try:
+            resp = self._session.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            return resp.json().get("result", [])
+        except (requests.RequestException, ValueError):
+            log.warning("Telegram getUpdates failed", exc_info=True)
+            return []
 
 
 # --------------------------------------------------------------------------- #
@@ -238,6 +257,61 @@ def save_seen(seen: set[str]) -> None:
     SEEN_PATH.write_text(json.dumps(sorted(seen)), encoding="utf-8")
 
 
+def load_offset() -> Optional[int]:
+    if OFFSET_PATH.exists():
+        try:
+            return json.loads(OFFSET_PATH.read_text(encoding="utf-8")).get("offset")
+        except (json.JSONDecodeError, OSError):
+            return None
+    return None
+
+
+def save_offset(offset: int) -> None:
+    OFFSET_PATH.write_text(json.dumps({"offset": offset}), encoding="utf-8")
+
+
+def format_offering(cfg: dict[str, Any], deals_by_dest: dict[str, list[Deal]]) -> str:
+    """Current active deals per watched destination, regardless of dedup state."""
+    cap = cfg["monitor"].get("max_deals_per_alert", 8)
+    lines = ["📋 Current Hulyo offering:"]
+    for iata, deals in deals_by_dest.items():
+        name = cfg.get("destination_names", {}).get(iata, iata)
+        if not deals:
+            lines.append(f"\n{name}: no active deals right now.")
+            continue
+        ordered = sorted(deals, key=lambda d: (d.price is None, d.price or 0))
+        shown = ordered[:cap]
+        lines.append(
+            f"\n{name}: {len(deals)} active deal(s)"
+            + (f", cheapest {len(shown)}:" if len(deals) > len(shown) else ":")
+        )
+        lines.extend(d.format() for d in shown)
+    return "\n".join(lines)
+
+
+def handle_list_command(
+    cfg: dict[str, Any], tg: Telegram, deals_by_dest: dict[str, list[Deal]]
+) -> None:
+    """Reply with the current offering if the chat asked for it (e.g. "List")
+    since the last poll. Non-blocking — fits inside one cron cycle."""
+    updates = tg.get_updates(load_offset())
+    if not updates:
+        return
+    save_offset(updates[-1]["update_id"] + 1)
+
+    wants_list = False
+    for update in updates:
+        msg = update.get("message") or {}
+        if str(msg.get("chat", {}).get("id")) != str(cfg["telegram"]["chat_id"]):
+            continue
+        text = (msg.get("text") or "").strip().lower().lstrip("/")
+        if text in LIST_COMMANDS:
+            wants_list = True
+
+    if wants_list:
+        tg.send(format_offering(cfg, deals_by_dest))
+
+
 def write_status(counts: Optional[dict[str, int]], error: Optional[str]) -> None:
     """Small machine-readable heartbeat other tools (e.g. a /status command
     on a sibling monitor) can read without parsing the log."""
@@ -315,8 +389,9 @@ def collect_deals(cfg: dict[str, Any]) -> dict[str, list[Deal]]:
     return result
 
 
-def run_once(cfg: dict[str, Any], tg: Telegram, seen: set[str]) -> None:
-    deals_by_dest = collect_deals(cfg)
+def alert_new_deals(
+    cfg: dict[str, Any], tg: Telegram, seen: set[str], deals_by_dest: dict[str, list[Deal]]
+) -> None:
     cap = cfg["monitor"].get("max_deals_per_alert", 8)
 
     for iata, deals in deals_by_dest.items():
@@ -348,6 +423,11 @@ def run_once(cfg: dict[str, Any], tg: Telegram, seen: set[str]) -> None:
         tg.send(header + "\n" + body)
         seen.update(f"{iata}|{d.price_key}" for d in new_deals)
 
+
+def run_once(cfg: dict[str, Any], tg: Telegram, seen: set[str]) -> None:
+    deals_by_dest = collect_deals(cfg)
+    alert_new_deals(cfg, tg, seen, deals_by_dest)
+    handle_list_command(cfg, tg, deals_by_dest)
     save_seen(seen)
     write_status({iata: len(deals) for iata, deals in deals_by_dest.items()}, error=None)
 

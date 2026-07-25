@@ -31,12 +31,12 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python hulyo_monitor.py
 
-      - name: Persist dedup state
+      - name: Persist monitor state
         run: |
-          if ! git diff --quiet -- seen_deals.json; then
+          git add seen_deals.json telegram_offset.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add seen_deals.json
-            git commit -m "Update seen deals [skip ci]"
+            git commit -m "Update monitor state [skip ci]"
             git push
           fi
