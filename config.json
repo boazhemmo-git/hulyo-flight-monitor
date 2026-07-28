@@ -3,20 +3,23 @@
     "bot_token": "",
     "chat_id": ""
   },
-  "watch_destinations": ["NCE", "AMS", "MIL", "BGY", "MRS", "PAR"],
+  "watch_destinations": ["NCE", "AMS", "MIL", "BGY", "MRS", "PAR", "TRN", "GVA"],
   "destination_names": {
     "AMS": "Amsterdam (אמסטרדם)",
     "NCE": "Nice (ניס)",
     "MIL": "Milan (מילאנו)",
     "BGY": "Bergamo (ברגמו)",
     "MRS": "Marseille (מרסיי)",
-    "PAR": "Paris (פריז)"
+    "PAR": "Paris (פריז)",
+    "TRN": "Turin (טורינו)",
+    "GVA": "Geneva (ג'נבה)"
   },
   "monitor": {
     "min_delay_seconds": 120,
     "max_delay_seconds": 240,
     "max_deals_per_alert": 8,
-    "max_price_usd": 0
+    "max_price_usd": 300,
+    "require_round_trip": true
   },
   "catalog": {
     "base_url": "https://www.hulyo.co.il/dynamic/client/",

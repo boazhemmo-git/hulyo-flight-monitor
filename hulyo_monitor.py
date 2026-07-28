@@ -78,6 +78,7 @@ class Deal:
     seats: Optional[int]
     deal_type: str
     segments: tuple[str, ...]
+    is_round_trip: bool
     url: str
 
     @property
@@ -184,6 +185,10 @@ def resolve_deals(
         if not ov:
             continue
         segments = _resolve_segments(ov, segment_map)
+        legs = ov.get("legRefs", [])
+        # Round trip means there's both an outbound leg and a return leg --
+        # excludes one-way-only products (single leg).
+        is_round_trip = len(legs) >= 2
         price_obj = ov.get("sellingPrice") or {}
         deals.append(Deal(
             product_id=pid,
@@ -195,6 +200,7 @@ def resolve_deals(
             seats=ov.get("availableSeats"),
             deal_type=item.get("dealType", "Flights"),
             segments=tuple(segments),
+            is_round_trip=is_round_trip,
             url=url_template.format(product_id=pid),
         ))
     return deals
@@ -376,6 +382,7 @@ def collect_deals(cfg: dict[str, Any]) -> dict[str, list[Deal]]:
     catalog = cfg["catalog"]
     names = cfg.get("destination_names", {})
     max_price = cfg["monitor"].get("max_price_usd", 0)
+    require_round_trip = cfg["monitor"].get("require_round_trip", False)
     result: dict[str, list[Deal]] = {iata: [] for iata in cfg["watch_destinations"]}
 
     for fname in catalog["flight_files"]:
@@ -387,6 +394,8 @@ def collect_deals(cfg: dict[str, Any]) -> dict[str, list[Deal]]:
                 data, iata, names.get(iata, iata), catalog["product_url_template"]
             ):
                 if max_price and deal.price and deal.price > max_price:
+                    continue
+                if require_round_trip and not deal.is_round_trip:
                     continue
                 result[iata].append(deal)
     return result
