@@ -3,10 +3,14 @@
     "bot_token": "",
     "chat_id": ""
   },
-  "watch_destinations": ["NCE", "AMS"],
+  "watch_destinations": ["NCE", "AMS", "MIL", "BGY", "MRS", "PAR"],
   "destination_names": {
     "AMS": "Amsterdam (אמסטרדם)",
-    "NCE": "Nice (ניס)"
+    "NCE": "Nice (ניס)",
+    "MIL": "Milan (מילאנו)",
+    "BGY": "Bergamo (ברגמו)",
+    "MRS": "Marseille (מרסיי)",
+    "PAR": "Paris (פריז)"
   },
   "monitor": {
     "min_delay_seconds": 120,
