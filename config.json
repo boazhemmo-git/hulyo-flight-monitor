@@ -19,6 +19,7 @@
     "max_delay_seconds": 240,
     "max_deals_per_alert": 8,
     "max_price_usd": 300,
+    "usd_per_eur": 1.17,
     "require_round_trip": true,
     "daily_summary_hour": 21,
     "timezone": "Asia/Jerusalem"

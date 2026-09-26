@@ -52,6 +52,8 @@ HEARTBEAT_PATH = PROJECT_DIR / "heartbeat.json"
 # Text that triggers a reply with the current offering (not just new deals).
 LIST_COMMANDS = {"list", "status", "current"}
 
+CURRENCY_SYMBOLS = {"USD": "$", "EUR": "€", "ILS": "₪"}
+
 log = logging.getLogger("hulyo")
 
 HEADERS = {
@@ -89,7 +91,8 @@ class Deal:
         return f"{self.product_id}|{self.price}"
 
     def format(self) -> str:
-        price = f"${self.price}" if self.price is not None else "price N/A"
+        symbol = CURRENCY_SYMBOLS.get(self.currency, f"{self.currency} ")
+        price = f"{symbol}{self.price}" if self.price is not None else "price N/A"
         seats = f", {self.seats} seats" if self.seats else ""
         head = f"• {_fmt_date(self.from_date)} — from {price}{seats}"
         legs = "\n".join(f"    {s}" for s in self.segments)
@@ -163,6 +166,7 @@ def resolve_deals(
     """Extract all active deals for `iata` from one catalog file."""
     catalog_items = data.get("catalogItems", [])
     overrides = data.get("productOverrides", {})
+    base_products = data.get("baseProducts", {})
     segment_map = data.get("segmentMap", {})
     destinations = data.get("destinations", {})
 
@@ -173,7 +177,9 @@ def resolve_deals(
     dest_name = (
         destinations.get(iata, {}).get("destination") or dest_name_override or iata
     )
-    product_ids: list[str] = []
+    # The card's own headline product (usually the earliest/cheapest deal) is
+    # NOT repeated inside relatedProducts, so it has to be added explicitly.
+    product_ids: list[str] = [item["productId"]] if item.get("productId") else []
     for group in item.get("relatedProducts", []):
         product_ids.extend(group.get("productsIds", []))
 
@@ -185,6 +191,11 @@ def resolve_deals(
         seen_ids.add(pid)
         ov = overrides.get(pid)
         if not ov:
+            continue
+        # Overrides are sparse: any field they omit (often sellingPrice,
+        # availableSeats, soldOut) is inherited from baseProducts[baseProductCode].
+        ov = {**base_products.get(ov.get("baseProductCode"), {}), **ov}
+        if ov.get("soldOut"):
             continue
         segments = _resolve_segments(ov, segment_map)
         legs = ov.get("legRefs", [])
@@ -287,7 +298,7 @@ def format_offering(cfg: dict[str, Any], deals_by_dest: dict[str, list[Deal]]) -
         if not deals:
             lines.append(f"\n{name}: no active deals right now.")
             continue
-        ordered = sorted(deals, key=lambda d: (d.price is None, d.price or 0))
+        ordered = sorted(deals, key=lambda d: (d.price is None, price_in_usd(cfg, d) or 0))
         shown = ordered[:cap]
         lines.append(
             f"\n{name}: {len(deals)} active deal(s)"
@@ -353,11 +364,13 @@ def send_daily_summary(
     ]
     for iata, deals in deals_by_dest.items():
         name = names.get(iata, iata)
-        prices = [d.price for d in deals if d.price is not None]
+        priced = [d for d in deals if d.price is not None]
         if not deals:
             lines.append(f"• {name}: no deals")
-        elif prices:
-            lines.append(f"• {name}: {len(deals)} deal(s), cheapest ${min(prices)}")
+        elif priced:
+            cheapest = min(priced, key=lambda d: price_in_usd(cfg, d))
+            symbol = CURRENCY_SYMBOLS.get(cheapest.currency, f"{cheapest.currency} ")
+            lines.append(f"• {name}: {len(deals)} deal(s), cheapest {symbol}{cheapest.price}")
         else:
             lines.append(f"• {name}: {len(deals)} deal(s)")
     lines.append("\nSend \"list\" for the full offering.")
@@ -423,6 +436,16 @@ def load_config() -> dict[str, Any]:
 # Core cycle
 # --------------------------------------------------------------------------- #
 
+def price_in_usd(cfg: dict[str, Any], deal: Deal) -> Optional[float]:
+    """Deal price converted to USD so the cap and "cheapest" compare like for
+    like — a few Hulyo products are priced in EUR, not USD."""
+    if deal.price is None:
+        return None
+    if deal.currency == "EUR":
+        return deal.price * cfg["monitor"].get("usd_per_eur", 1.17)
+    return float(deal.price)
+
+
 def collect_deals(cfg: dict[str, Any]) -> dict[str, list[Deal]]:
     """Return {iata: [deals]} across all flight catalogs for watched dests."""
     catalog = cfg["catalog"]
@@ -439,7 +462,8 @@ def collect_deals(cfg: dict[str, Any]) -> dict[str, list[Deal]]:
             for deal in resolve_deals(
                 data, iata, names.get(iata, iata), catalog["product_url_template"]
             ):
-                if max_price and deal.price and deal.price > max_price:
+                usd = price_in_usd(cfg, deal)
+                if max_price and usd is not None and usd > max_price:
                     continue
                 if require_round_trip and not deal.is_round_trip:
                     continue
@@ -468,7 +492,7 @@ def alert_new_deals(
         if not new_deals:
             continue
 
-        new_deals.sort(key=lambda d: (d.price is None, d.price or 0))
+        new_deals.sort(key=lambda d: (d.price is None, price_in_usd(cfg, d) or 0))
         shown = new_deals[:cap]
         header = (
             f"✈️ Flights to {name} are available!\n"
