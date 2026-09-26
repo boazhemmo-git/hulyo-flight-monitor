@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -46,6 +47,7 @@ SEEN_PATH = PROJECT_DIR / "seen_deals.json"
 LOG_PATH = PROJECT_DIR / "hulyo_monitor.log"
 STATUS_PATH = PROJECT_DIR / "status.json"
 OFFSET_PATH = PROJECT_DIR / "telegram_offset.json"
+HEARTBEAT_PATH = PROJECT_DIR / "heartbeat.json"
 
 # Text that triggers a reply with the current offering (not just new deals).
 LIST_COMMANDS = {"list", "status", "current"}
@@ -321,6 +323,50 @@ def handle_list_command(
         log.info("Sent current offering in reply to list command")
 
 
+def send_daily_summary(
+    cfg: dict[str, Any], tg: Telegram, deals_by_dest: dict[str, list[Deal]]
+) -> None:
+    """Once a day, after ``daily_summary_hour`` local time, send a short
+    "still alive" message. The sent date is committed back by the workflow
+    (heartbeat.json), so it fires once per day even though each cycle is a
+    fresh checkout; a failed cycle just retries on the next one."""
+    mon = cfg["monitor"]
+    hour = mon.get("daily_summary_hour")
+    if hour is None:
+        return
+    now = datetime.now(ZoneInfo(mon.get("timezone", "Asia/Jerusalem")))
+    today = now.date().isoformat()
+    if now.hour < hour:
+        return
+    try:
+        last_sent = json.loads(HEARTBEAT_PATH.read_text(encoding="utf-8")).get("last_sent")
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        last_sent = None
+    if last_sent == today:
+        return
+
+    names = cfg.get("destination_names", {})
+    lines = [
+        f"🟢 Hulyo monitor is up — daily check-in {now:%d/%m %H:%M}",
+        f"Checking every 5 min for round-trips up to ${mon.get('max_price_usd')}.",
+        "",
+    ]
+    for iata, deals in deals_by_dest.items():
+        name = names.get(iata, iata)
+        prices = [d.price for d in deals if d.price is not None]
+        if not deals:
+            lines.append(f"• {name}: no deals")
+        elif prices:
+            lines.append(f"• {name}: {len(deals)} deal(s), cheapest ${min(prices)}")
+        else:
+            lines.append(f"• {name}: {len(deals)} deal(s)")
+    lines.append("\nSend \"list\" for the full offering.")
+
+    tg.send("\n".join(lines))
+    HEARTBEAT_PATH.write_text(json.dumps({"last_sent": today}), encoding="utf-8")
+    log.info("Sent daily summary for %s", today)
+
+
 def write_status(counts: Optional[dict[str, int]], error: Optional[str]) -> None:
     """Small machine-readable heartbeat other tools (e.g. a /status command
     on a sibling monitor) can read without parsing the log."""
@@ -440,6 +486,7 @@ def run_once(cfg: dict[str, Any], tg: Telegram, seen: set[str]) -> None:
     deals_by_dest = collect_deals(cfg)
     alert_new_deals(cfg, tg, seen, deals_by_dest)
     handle_list_command(cfg, tg, deals_by_dest)
+    send_daily_summary(cfg, tg, deals_by_dest)
     save_seen(seen)
     write_status({iata: len(deals) for iata, deals in deals_by_dest.items()}, error=None)
 

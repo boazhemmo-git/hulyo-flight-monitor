@@ -19,7 +19,9 @@
     "max_delay_seconds": 240,
     "max_deals_per_alert": 8,
     "max_price_usd": 300,
-    "require_round_trip": true
+    "require_round_trip": true,
+    "daily_summary_hour": 21,
+    "timezone": "Asia/Jerusalem"
   },
   "catalog": {
     "base_url": "https://www.hulyo.co.il/dynamic/client/",

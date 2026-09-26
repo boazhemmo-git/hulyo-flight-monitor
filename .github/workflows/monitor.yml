@@ -37,7 +37,7 @@ jobs:
 
       - name: Persist monitor state
         run: |
-          git add seen_deals.json telegram_offset.json 2>/dev/null || true
+          git add seen_deals.json telegram_offset.json heartbeat.json 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
