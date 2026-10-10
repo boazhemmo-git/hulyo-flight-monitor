@@ -3,9 +3,10 @@
     "bot_token": "",
     "chat_id": ""
   },
-  "watch_destinations": ["NCE", "AMS"],
+  "watch_destinations": ["NCE", "AMS", "BEG"],
   "destination_names": {
     "AMS": "Amsterdam (אמסטרדם)",
+    "BEG": "Belgrade (בלגרד)",
     "NCE": "Nice (ניס)",
     "MIL": "Milan (מילאנו)",
     "BGY": "Bergamo (ברגמו)",
